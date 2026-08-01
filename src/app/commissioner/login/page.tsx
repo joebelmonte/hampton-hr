@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function LoginPage() { return <main className="shell"><section className="card form-card"><p className="eyebrow">Commissioner portal</p><h1 style={{fontSize:"2.6rem"}}>Sign in</h1><p className="lede">Supabase Auth is wired as the production authentication boundary.</p><Link className="button" href="/commissioner/transactions">Continue to transaction form</Link><p className="updated">This scaffold uses a demo link until Supabase environment variables are configured.</p></section></main>; }
