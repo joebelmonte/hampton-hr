@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { Fragment } from "react";
-import { DEMO_SLOTS, DEMO_STANDINGS } from "@/lib/demo-data";
+import { notFound } from "next/navigation";
+import { getTeamDetail } from "@/lib/standings";
+
+function dateLabel(date: Date) {
+  return date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", timeZone: "UTC" });
+}
 
 export default async function TeamPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const team = DEMO_STANDINGS.find((candidate) => candidate.slug === slug) ?? DEMO_STANDINGS[0];
-  const slots = [...DEMO_SLOTS].sort((a, b) => b.total - a.total);
-  return <main className="shell"><Link className="updated" href="/">← All standings</Link><section className="hero"><p className="eyebrow">Team detail</p><h1>{team.name}</h1><p className="lede">{team.total} points · top 10 slots count</p></section><section className="card"><div className="detail-grid"><div className="detail-head">Slot</div><div className="detail-head">Player history</div><div className="detail-head">Points</div>{slots.map((slot, i) => { const className = i >= slots.length - 2 ? "bench" : ""; return <Fragment key={slot.number}><div className={className}>#{slot.number}</div><div className={`history ${className}`}>{slot.players.map((player) => <span key={player.name} className={player.current ? "current" : "past"}>{player.name} ({player.points})</span>)}</div><div className={`total ${className}`}>{slot.total}</div></Fragment>; })}<div className="total-row">Total</div><div className="total-row">Best 10 slots</div><div className="total-row">{team.total}</div></div></section><section className="card" style={{marginTop: 28}}><div className="card-heading"><h2>Transactions</h2></div><div style={{padding: 24}}><strong>July 15</strong><p className="updated">Slot #4 · OUT Aaron Judge · IN Pete Alonso</p></div></section></main>;
+  const team = await getTeamDetail(slug);
+  if (!team) notFound();
+  return <main className="shell"><Link className="updated" href="/">← All standings</Link><section className="hero"><p className="eyebrow">Team detail</p><h1>{team.name}</h1><p className="lede">{team.total} points · top 12 slots count</p></section><section className="card"><div className="detail-grid"><div className="detail-head">Slot</div><div className="detail-head">Player history</div><div className="detail-head">Points</div>{team.slots.map((slot, i) => { const className = i >= team.slots.length - 2 ? "bench" : ""; return <Fragment key={slot.number}><div className={className}>#{slot.number}</div><div className={`history ${className}`}>{slot.players.length ? slot.players.map((player) => <span key={player.id} className={player.current ? "current" : "past"}>{player.name} ({dateLabel(player.startDate)}-{player.endDate ? dateLabel(player.endDate) : "now"}): {player.homeRuns}</span>) : <span className="muted">Unassigned</span>}</div><div className={`total ${className}`}>{slot.total}</div></Fragment>; })}<div className="total-row">Total</div><div className="total-row">Best 12 slots</div><div className="total-row">{team.total}</div></div></section><section className="card" style={{marginTop: 28}}><div className="card-heading"><h2>Transactions</h2></div><div style={{padding: 24}}>{team.transactions.length ? team.transactions.map((transaction) => <div key={transaction.id}><strong>{transaction.effectiveDate.toLocaleDateString()}</strong><p className="updated">Slot #{transaction.slot.number} · OUT {transaction.playerOut?.fullName ?? "Free agent"} · IN {transaction.playerIn.fullName}</p></div>) : <p className="updated">No transactions yet.</p>}</div></section></main>;
 }
