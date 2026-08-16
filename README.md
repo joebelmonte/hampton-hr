@@ -56,9 +56,10 @@ Queue a historical date range from the commissioner portal. Run the `curl` comma
 ```bash
 RESEND_API_KEY="re_..."
 EMAIL_FROM="Hampton HR League <league@your-verified-domain.com>"
+APP_URL="http://localhost:3000"
 ```
 
-Delivery records prevent the same team from receiving more than one scheduled summary for a given day. After pulling these changes, run `pnpm prisma migrate dev` locally (or `pnpm prisma migrate deploy` in production) to create the delivery-record table.
+`APP_URL` is the public site URL used in the email links. Set it to `https://hampton-hr-prod.vercel.app` in Vercel Production; development can use `http://localhost:3000`. A team’s Captain email(s) field accepts a comma-separated list, and every listed captain receives that team’s summary. Delivery records prevent the same team from receiving more than one scheduled summary for a given day. After pulling these changes, run `pnpm prisma migrate dev` locally (or `pnpm prisma migrate deploy` in production) to create the delivery-record table.
 
 ## Moving a league between environments
 

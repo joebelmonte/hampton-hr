@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { normalizeCaptainEmails } from "@/lib/captain-emails";
 
 function slugify(name: string) {
   const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -15,17 +16,15 @@ export async function getLeagueAdminTeams() {
 
 export async function createLeagueTeam(input: { name: string; ownerEmail: string }) {
   const name = input.name.trim();
-  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  const ownerEmail = normalizeCaptainEmails(input.ownerEmail);
   if (!name) throw new Error("Enter a team name.");
-  if (!/^\S+@\S+\.\S+$/.test(ownerEmail)) throw new Error("Enter a valid captain email address.");
   return prisma.team.create({ data: { name, slug: slugify(name), ownerEmail, slots: { create: Array.from({ length: 14 }, (_, index) => ({ number: index + 1 })) } } });
 }
 
 export async function updateLeagueTeam(input: { id: string; name: string; ownerEmail: string }) {
   const name = input.name.trim();
-  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  const ownerEmail = normalizeCaptainEmails(input.ownerEmail);
   if (!name) throw new Error("Enter a team name.");
-  if (!/^\S+@\S+\.\S+$/.test(ownerEmail)) throw new Error("Enter a valid captain email address.");
   return prisma.team.update({ where: { id: input.id }, data: { name, ownerEmail } });
 }
 
