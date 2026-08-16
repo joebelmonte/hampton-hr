@@ -64,7 +64,7 @@ Delivery records prevent the same team from receiving more than one scheduled su
 
 Use the **Transfer league setup** section in the commissioner portal to download a JSON export from development. In production, choose that same file and confirm **Import into empty league**.
 
-The bundle includes team names, captain emails, slugs, slot numbers, transaction records, and the dated roster-assignment timeline required to score historical home runs correctly. Import validates the complete bundle and only runs when the destination has no teams, preventing an accidental merge with a mismatched league. Player records and imported MLB home-run events are preserved.
+The bundle includes team names, captain emails, slugs, slot numbers, transaction records, and the dated roster-assignment timeline required to score historical home runs correctly. New exports preserve full transaction timestamps, including multiple moves by the same player on one day; older date-only exports remain supported. Import validates the complete bundle and only runs when the destination has no teams, preventing an accidental merge with a mismatched league. Player records and imported MLB home-run events are preserved.
 
 ## Importing the 2026 league CSV export
 

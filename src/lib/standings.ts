@@ -1,6 +1,7 @@
 import { teamScore } from "@/lib/scoring";
 import { prisma } from "@/lib/prisma";
 import { slotPointTotals } from "@/lib/attribution";
+import { startOfLeagueDay } from "@/lib/league-date";
 
 export type Standing = {
   id: string;
@@ -15,7 +16,6 @@ export type Standing = {
   pastThirtyDays: number;
 };
 
-const startOfDay = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 const addDays = (date: Date, days: number) => new Date(date.getTime() + days * 86_400_000);
 
 const slotPoints = (events: { gameDate: Date; player: { assignments: { effectiveDate: Date; slotId: string | null }[] } }[], since?: Date, until?: Date) => slotPointTotals(events.map((event) => ({ gameDate: event.gameDate, assignments: event.player.assignments })), since, until);
@@ -29,7 +29,7 @@ function scoreForSlots(slotIds: string[], points: Map<string, number>) {
  * presentation-only snapshot. Snapshot records are used only for rank movement.
  */
 export async function getStandings(asOf = new Date()): Promise<Standing[]> {
-  const day = startOfDay(asOf);
+  const day = startOfLeagueDay(asOf);
   const [teams, events, previousSnapshot] = await Promise.all([
     prisma.team.findMany({ include: { slots: { select: { id: true } } }, orderBy: { name: "asc" } }),
     prisma.homeRunEvent.findMany({
@@ -77,8 +77,8 @@ export async function getStandings(asOf = new Date()): Promise<Standing[]> {
 }
 
 export async function saveStandingsSnapshot(asOf = new Date()) {
-  const day = startOfDay(asOf);
-  const standings = await getStandings(day);
+  const day = startOfLeagueDay(asOf);
+  const standings = await getStandings(asOf);
   await prisma.$transaction(standings.map((standing) => prisma.standingsSnapshot.upsert({
     where: { teamId_asOfDate: { teamId: standing.id, asOfDate: day } },
     create: { teamId: standing.id, asOfDate: day, teamPoints: standing.total, rank: standing.rank },
@@ -91,6 +91,10 @@ export async function getLeagueTeams() {
   return prisma.team.findMany({ select: { id: true, name: true, slug: true, slots: { select: { id: true, number: true }, orderBy: { number: "asc" } } }, orderBy: { name: "asc" } });
 }
 
+export async function getMlbStatsLastUpdated() {
+  return (await prisma.mlbSyncState.findUnique({ where: { id: "home-runs" }, select: { updatedAt: true } }))?.updatedAt ?? null;
+}
+
 export async function getTransactions() {
   return prisma.rosterTransaction.findMany({
     include: { team: true, slot: true, playerIn: true, playerOut: true },
@@ -99,7 +103,7 @@ export async function getTransactions() {
 }
 
 export async function getTeamDetail(slug: string, asOf = new Date()) {
-  const day = startOfDay(asOf);
+  const day = startOfLeagueDay(asOf);
   const team = await prisma.team.findUnique({
     where: { slug },
     include: {

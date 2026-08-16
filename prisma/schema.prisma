@@ -126,6 +126,11 @@ model MlbBackfill {
   @@index([status, createdAt])
 }
 
+model MlbSyncState {
+  id        String   @id
+  updatedAt DateTime @updatedAt
+}
+
 model DailyEmailDelivery {
   id       String   @id @default(cuid())
   teamId   String

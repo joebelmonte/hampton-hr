@@ -1,9 +1,21 @@
 import Link from "next/link";
-import { getStandings } from "@/lib/standings";
+import { getMlbStatsLastUpdated, getStandings } from "@/lib/standings";
 import { StandingsTable } from "./standings-table";
 
+function lastUpdatedLabel(updatedAt: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(updatedAt);
+}
+
 export default async function LeaguePage() {
-  const standings = await getStandings();
+  const [standings, statsLastUpdated] = await Promise.all([getStandings(), getMlbStatsLastUpdated()]);
 
   return (
     <main className="shell">
@@ -17,6 +29,7 @@ export default async function LeaguePage() {
         <div className="card-heading"><h2>Standings</h2><Link href="/commissioner">Commissioner admin →</Link></div>
         <StandingsTable standings={standings} />
         <p className="footnote">Team totals include the twelve highest-scoring slots. The two lowest slots are excluded.</p>
+        <p className="footnote">Stats last updated: {statsLastUpdated ? lastUpdatedLabel(statsLastUpdated) : "Not yet synced"}.</p>
       </section>
     </main>
   );

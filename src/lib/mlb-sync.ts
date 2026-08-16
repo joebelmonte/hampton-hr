@@ -1,4 +1,5 @@
 import { gamePlayByPlay, todaysSchedule } from "@/lib/mlb";
+import { isCountedMlbGame, type ScheduledGame } from "@/lib/mlb-game";
 import { prisma } from "@/lib/prisma";
 import { rebuildSlotTotal } from "@/lib/roster";
 import { saveStandingsSnapshot } from "@/lib/standings";
@@ -7,6 +8,14 @@ type HomeRun = { mlbPlayerId: number; fullName: string; gameId: number; gameDate
 
 const dateString = (date: Date) => date.toISOString().slice(0, 10);
 const startOfDay = (date: Date) => new Date(`${dateString(date)}T00:00:00.000Z`);
+
+async function markMlbStatsSynced() {
+  await prisma.mlbSyncState.upsert({
+    where: { id: "home-runs" },
+    create: { id: "home-runs" },
+    update: { updatedAt: new Date() },
+  });
+}
 
 function homeRunsFromPlayByPlay(gameId: number, gameDate: Date, payload: { allPlays?: unknown[] }): HomeRun[] {
   const homersByPlayer = new Map<number, number>();
@@ -26,8 +35,8 @@ function homeRunsFromPlayByPlay(gameId: number, gameDate: Date, payload: { allPl
 
 async function gamesForDates(dates: Date[]) {
   const schedules = await Promise.all(dates.map((date) => todaysSchedule(dateString(date))));
-  const games = schedules.flatMap((schedule) => (schedule.dates ?? []).flatMap((date: { games?: unknown[] }) => date.games ?? [])) as { gamePk?: number; officialDate?: string; status?: { abstractGameState?: string } }[];
-  return [...new Map(games.filter((game) => game.gamePk && game.officialDate && ["Live", "Final"].includes(game.status?.abstractGameState ?? "")).map((game) => [game.gamePk!, game])).values()];
+  const games = schedules.flatMap((schedule) => (schedule.dates ?? []).flatMap((date: { games?: unknown[] }) => date.games ?? [])) as ScheduledGame[];
+  return [...new Map(games.filter(isCountedMlbGame).map((game) => [game.gamePk!, game])).values()];
 }
 
 export async function syncHomeRunsForDates(dates: Date[]) {
@@ -38,7 +47,10 @@ export async function syncHomeRunsForDates(dates: Date[]) {
     await gamePlayByPlay(game.gamePk!),
   )));
   const homeRuns = runsByGame.flat();
-  if (!homeRuns.length) return { games: games.length, homeRuns: 0, inserted: 0, slotsRefreshed: 0 };
+  if (!homeRuns.length) {
+    await markMlbStatsSynced();
+    return { games: games.length, homeRuns: 0, inserted: 0, slotsRefreshed: 0 };
+  }
 
   const players = await Promise.all([...new Map(homeRuns.map((homeRun) => [homeRun.mlbPlayerId, homeRun])).values()].map((homeRun) => prisma.player.upsert({
     where: { mlbPlayerId: homeRun.mlbPlayerId },
@@ -72,6 +84,7 @@ export async function syncHomeRunsForDates(dates: Date[]) {
   }
   await Promise.all([...affectedSlots].map(rebuildSlotTotal));
   await saveStandingsSnapshot();
+  await markMlbStatsSynced();
 
   return { games: games.length, homeRuns: homeRuns.length, inserted: result.count, slotsRefreshed: affectedSlots.size };
 }

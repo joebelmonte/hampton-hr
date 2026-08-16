@@ -4,7 +4,7 @@ import { saveStandingsSnapshot } from "@/lib/standings";
 
 type PlayerData = { mlbPlayerId: number; fullName: string; active: boolean };
 type Bundle = {
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   teams: { name: string; slug: string; ownerEmail: string; slots: number[] }[];
   players: PlayerData[];
@@ -12,10 +12,10 @@ type Bundle = {
   transactions: { teamSlug: string; slotNumber: number; playerOutMlbPlayerId: number | null; playerInMlbPlayerId: number; effectiveDate: string; notes: string | null }[];
 };
 
-const dateValue = (date: Date) => date.toISOString().slice(0, 10);
-const parseDate = (value: unknown) => {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Every date must use YYYY-MM-DD.");
-  const date = new Date(`${value}T00:00:00.000Z`);
+const timestampValue = (date: Date) => date.toISOString();
+const parseTimestamp = (value: unknown) => {
+  if (typeof value !== "string" || (!/^\d{4}-\d{2}-\d{2}$/.test(value) && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value))) throw new Error("Every effective date must use YYYY-MM-DD or an ISO timestamp.");
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00.000Z` : value);
   if (Number.isNaN(date.getTime())) throw new Error("The import contains an invalid date.");
   return date;
 };
@@ -33,19 +33,19 @@ export async function exportTransactionBundle(): Promise<Bundle> {
     if (transaction.playerOut) players.set(transaction.playerOut.mlbPlayerId, { mlbPlayerId: transaction.playerOut.mlbPlayerId, fullName: transaction.playerOut.fullName, active: transaction.playerOut.active });
   }
   return {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     teams: teams.map((team) => ({ name: team.name, slug: team.slug, ownerEmail: team.ownerEmail, slots: team.slots.map((slot) => slot.number) })),
     players: [...players.values()].sort((a, b) => a.mlbPlayerId - b.mlbPlayerId),
-    assignments: assignments.map((assignment) => ({ mlbPlayerId: assignment.player.mlbPlayerId, teamSlug: assignment.slot?.team.slug ?? null, slotNumber: assignment.slot?.number ?? null, effectiveDate: dateValue(assignment.effectiveDate) })),
-    transactions: transactions.map((transaction) => ({ teamSlug: transaction.team.slug, slotNumber: transaction.slot.number, playerOutMlbPlayerId: transaction.playerOut?.mlbPlayerId ?? null, playerInMlbPlayerId: transaction.playerIn.mlbPlayerId, effectiveDate: dateValue(transaction.effectiveDate), notes: transaction.notes })),
+    assignments: assignments.map((assignment) => ({ mlbPlayerId: assignment.player.mlbPlayerId, teamSlug: assignment.slot?.team.slug ?? null, slotNumber: assignment.slot?.number ?? null, effectiveDate: timestampValue(assignment.effectiveDate) })),
+    transactions: transactions.map((transaction) => ({ teamSlug: transaction.team.slug, slotNumber: transaction.slot.number, playerOutMlbPlayerId: transaction.playerOut?.mlbPlayerId ?? null, playerInMlbPlayerId: transaction.playerIn.mlbPlayerId, effectiveDate: timestampValue(transaction.effectiveDate), notes: transaction.notes })),
   };
 }
 
 function parseBundle(value: unknown): Bundle {
   if (!value || typeof value !== "object") throw new Error("The import file must be a transaction export JSON file.");
   const bundle = value as Partial<Bundle>;
-  if (bundle.version !== 1 || !Array.isArray(bundle.teams) || !Array.isArray(bundle.players) || !Array.isArray(bundle.assignments) || !Array.isArray(bundle.transactions)) throw new Error("This is not a supported league export file.");
+  if ((bundle.version !== 1 && bundle.version !== 2) || !Array.isArray(bundle.teams) || !Array.isArray(bundle.players) || !Array.isArray(bundle.assignments) || !Array.isArray(bundle.transactions)) throw new Error("This is not a supported league export file.");
   const teams = bundle.teams.map((team) => {
     if (typeof team.name !== "string" || !team.name.trim() || typeof team.slug !== "string" || !/^[a-z0-9-]+$/.test(team.slug) || typeof team.ownerEmail !== "string" || !team.ownerEmail.trim() || !Array.isArray(team.slots) || !team.slots.length || team.slots.some((slot) => !Number.isInteger(slot) || slot < 1) || new Set(team.slots).size !== team.slots.length) throw new Error("The import contains an invalid team setup.");
     return { name: team.name.trim(), slug: team.slug, ownerEmail: team.ownerEmail.trim(), slots: [...team.slots].sort((a, b) => a - b) };
@@ -59,14 +59,14 @@ function parseBundle(value: unknown): Bundle {
   const playerIds = new Set(players.map((player) => player.mlbPlayerId));
   const assignments = bundle.assignments.map((assignment) => {
     if (!playerIds.has(assignment.mlbPlayerId) || (assignment.teamSlug === null) !== (assignment.slotNumber === null) || (assignment.teamSlug !== null && (typeof assignment.teamSlug !== "string" || !Number.isInteger(assignment.slotNumber)))) throw new Error("The import contains an invalid assignment.");
-    return { ...assignment, effectiveDate: dateValue(parseDate(assignment.effectiveDate)) };
+    return { ...assignment, effectiveDate: timestampValue(parseTimestamp(assignment.effectiveDate)) };
   });
-  if (new Set(assignments.map((assignment) => `${assignment.mlbPlayerId}:${assignment.effectiveDate}`)).size !== assignments.length) throw new Error("The import contains multiple assignments for a player on one date.");
+  if (new Set(assignments.map((assignment) => `${assignment.mlbPlayerId}:${assignment.effectiveDate}`)).size !== assignments.length) throw new Error("The import contains multiple assignments for a player at one timestamp.");
   const transactions = bundle.transactions.map((transaction) => {
     if (typeof transaction.teamSlug !== "string" || !Number.isInteger(transaction.slotNumber) || !playerIds.has(transaction.playerInMlbPlayerId) || (transaction.playerOutMlbPlayerId !== null && !playerIds.has(transaction.playerOutMlbPlayerId)) || (transaction.notes !== null && typeof transaction.notes !== "string")) throw new Error("The import contains an invalid transaction.");
-    return { ...transaction, effectiveDate: dateValue(parseDate(transaction.effectiveDate)) };
+    return { ...transaction, effectiveDate: timestampValue(parseTimestamp(transaction.effectiveDate)) };
   });
-  return { version: 1, exportedAt: typeof bundle.exportedAt === "string" ? bundle.exportedAt : new Date().toISOString(), teams, players, assignments, transactions };
+  return { version: bundle.version, exportedAt: typeof bundle.exportedAt === "string" ? bundle.exportedAt : new Date().toISOString(), teams, players, assignments, transactions };
 }
 
 export async function importTransactionBundle(text: string) {
@@ -87,11 +87,11 @@ export async function importTransactionBundle(text: string) {
     const playerIdByMlbId = new Map(players.map((player) => [player.mlbPlayerId, player.id]));
     if (bundle.assignments.length) await tx.playerAssignment.createMany({ data: bundle.assignments.map((assignment) => {
       const slot = assignment.teamSlug ? slotByKey.get(`${assignment.teamSlug}:${assignment.slotNumber}`)! : null;
-      return { playerId: playerIdByMlbId.get(assignment.mlbPlayerId)!, slotId: slot?.id, teamId: slot?.teamId, effectiveDate: parseDate(assignment.effectiveDate) };
+      return { playerId: playerIdByMlbId.get(assignment.mlbPlayerId)!, slotId: slot?.id, teamId: slot?.teamId, effectiveDate: parseTimestamp(assignment.effectiveDate) };
     }) });
     if (bundle.transactions.length) await tx.rosterTransaction.createMany({ data: bundle.transactions.map((transaction) => {
       const slot = slotByKey.get(`${transaction.teamSlug}:${transaction.slotNumber}`)!;
-      return { teamId: slot.teamId, slotId: slot.id, playerOutId: transaction.playerOutMlbPlayerId ? playerIdByMlbId.get(transaction.playerOutMlbPlayerId) : null, playerInId: playerIdByMlbId.get(transaction.playerInMlbPlayerId)!, effectiveDate: parseDate(transaction.effectiveDate), notes: transaction.notes };
+      return { teamId: slot.teamId, slotId: slot.id, playerOutId: transaction.playerOutMlbPlayerId ? playerIdByMlbId.get(transaction.playerOutMlbPlayerId) : null, playerInId: playerIdByMlbId.get(transaction.playerInMlbPlayerId)!, effectiveDate: parseTimestamp(transaction.effectiveDate), notes: transaction.notes };
     }) });
   });
   const slots = await prisma.slot.findMany({ select: { id: true } });

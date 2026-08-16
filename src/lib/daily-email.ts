@@ -2,8 +2,8 @@ import { Resend } from "resend";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getStandings, type Standing } from "@/lib/standings";
+import { startOfLeagueDay } from "@/lib/league-date";
 
-const startOfDay = (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
 
 export function renderDailyStandingsEmail(teamName: string, standings: Standing[], asOf: Date) {
@@ -16,8 +16,8 @@ export async function sendDailyStandingsEmails(asOf = new Date()) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   if (!apiKey || !from) throw new Error("RESEND_API_KEY and EMAIL_FROM must be configured before sending daily email.");
-  const day = startOfDay(asOf);
-  const [standings, teams] = await Promise.all([getStandings(day), prisma.team.findMany({ select: { id: true, name: true, ownerEmail: true } })]);
+  const day = startOfLeagueDay(asOf);
+  const [standings, teams] = await Promise.all([getStandings(asOf), prisma.team.findMany({ select: { id: true, name: true, ownerEmail: true } })]);
   const resend = new Resend(apiKey);
   let sent = 0;
   let skipped = 0;
@@ -48,7 +48,7 @@ export async function sendTestStandingsEmail(recipient: string, teamId: string, 
     from,
     to: recipient,
     subject: "[TEST] Hampton HR standings",
-    html: renderDailyStandingsEmail(team.name, standings, startOfDay(asOf)),
+    html: renderDailyStandingsEmail(team.name, standings, startOfLeagueDay(asOf)),
   });
   if (error) throw new Error(error.message);
 }
