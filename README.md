@@ -38,7 +38,7 @@ In Supabase **Authentication → Providers → Email**, enable email/password si
 
 ## MLB home-run sync and historical backfills
 
-On Vercel, `vercel.json` calls `/api/cron/mlb-sync` every five minutes. Each run imports home runs from today and yesterday, then advances one day of the oldest queued historical backfill.
+On Vercel, `vercel.json` calls `/api/cron/mlb-sync` daily at 09:00 UTC (5 AM Eastern during daylight time). Each run imports home runs from today and yesterday, then advances one day of the oldest queued historical backfill. Call the protected route manually when you want an additional refresh.
 
 For local development, start the app with `pnpm dev`, export the same `CRON_SECRET` used in `.env`, and call the route yourself:
 
@@ -98,7 +98,7 @@ The replacement mode preserves MLB player records and home-run event data, but p
 
 ## Scheduling
 
-`vercel.json` invokes MLB sync every five minutes. The completed job should exit quickly when no games are live or recently finished. It schedules email for 10:00 UTC (roughly 6 AM Eastern during daylight time); adjust it for daylight-saving behavior or use a timezone-aware scheduler if precise local-time delivery is essential.
+`vercel.json` invokes MLB sync at 09:00 UTC and sends email at 11:00 UTC (5 AM and 7 AM Eastern during daylight time). Vercel cron schedules use UTC; during Eastern Standard Time these run one hour earlier locally. For baseball-season use, this aligns with the requested morning schedule; use a timezone-aware scheduler if precise year-round local-time delivery is essential.
 
 ## Data integrity rules
 
