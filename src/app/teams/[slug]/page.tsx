@@ -3,6 +3,8 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { getTeamDetail } from "@/lib/standings";
 
+export const dynamic = "force-dynamic";
+
 function dateLabel(date: Date) {
   return date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", timeZone: "UTC" });
 }

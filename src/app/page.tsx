@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getMlbStatsLastUpdated, getStandings } from "@/lib/standings";
 import { StandingsTable } from "./standings-table";
 
+export const dynamic = "force-dynamic";
+
 function lastUpdatedLabel(updatedAt: Date) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
