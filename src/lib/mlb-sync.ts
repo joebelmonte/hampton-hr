@@ -52,11 +52,17 @@ export async function syncHomeRunsForDates(dates: Date[]) {
     return { games: games.length, homeRuns: 0, inserted: 0, slotsRefreshed: 0 };
   }
 
-  const players = await Promise.all([...new Map(homeRuns.map((homeRun) => [homeRun.mlbPlayerId, homeRun])).values()].map((homeRun) => prisma.player.upsert({
-    where: { mlbPlayerId: homeRun.mlbPlayerId },
-    create: { mlbPlayerId: homeRun.mlbPlayerId, fullName: homeRun.fullName },
-    update: { fullName: homeRun.fullName },
-  })));
+  const players = [];
+  const uniqueHomeRuns = [...new Map(homeRuns.map((homeRun) => [homeRun.mlbPlayerId, homeRun])).values()];
+  // Supabase's session pool has a small connection ceiling. Keep these writes
+  // serial so a homer-heavy day cannot exhaust that pool in a serverless run.
+  for (const homeRun of uniqueHomeRuns) {
+    players.push(await prisma.player.upsert({
+      where: { mlbPlayerId: homeRun.mlbPlayerId },
+      create: { mlbPlayerId: homeRun.mlbPlayerId, fullName: homeRun.fullName },
+      update: { fullName: homeRun.fullName },
+    }));
+  }
   const playerIdByMlbId = new Map(players.map((player) => [player.mlbPlayerId, player.id]));
   const result = await prisma.homeRunEvent.createMany({
     data: homeRuns.map((homeRun) => ({
@@ -82,7 +88,7 @@ export async function syncHomeRunsForDates(dates: Date[]) {
     const assignment = assignmentsByPlayer.get(playerId)?.findLast((entry) => entry.effectiveDate <= homeRun.gameDate);
     if (assignment?.slotId) affectedSlots.add(assignment.slotId);
   }
-  await Promise.all([...affectedSlots].map(rebuildSlotTotal));
+  for (const slotId of affectedSlots) await rebuildSlotTotal(slotId);
   await saveStandingsSnapshot();
   await markMlbStatsSynced();
 
