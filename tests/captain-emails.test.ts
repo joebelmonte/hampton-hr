@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captainEmails, normalizeCaptainEmails } from "../src/lib/captain-emails";
+import { captainEmails, isDeliverableCaptainEmail, normalizeCaptainEmails } from "../src/lib/captain-emails";
 
 describe("captain emails", () => {
   it("normalizes and de-duplicates a comma-separated captain list", () => {
@@ -12,5 +12,10 @@ describe("captain emails", () => {
 
   it("rejects a list containing an invalid email", () => {
     expect(() => captainEmails("captain@example.com, not-an-email")).toThrow("valid captain email");
+  });
+
+  it("does not treat the import placeholder as a deliverable address", () => {
+    expect(isDeliverableCaptainEmail("unassigned+moonshots@example.invalid")).toBe(false);
+    expect(isDeliverableCaptainEmail("captain@example.com")).toBe(true);
   });
 });

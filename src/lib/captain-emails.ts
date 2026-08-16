@@ -11,3 +11,7 @@ export function captainEmails(value: string) {
 export function normalizeCaptainEmails(value: string) {
   return captainEmails(value).join(", ");
 }
+
+export function isDeliverableCaptainEmail(email: string) {
+  return !email.endsWith("@example.invalid");
+}
