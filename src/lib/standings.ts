@@ -92,7 +92,8 @@ export async function getLeagueTeams() {
 }
 
 export async function getMlbStatsLastUpdated() {
-  return (await prisma.mlbSyncState.findUnique({ where: { id: "home-runs" }, select: { updatedAt: true } }))?.updatedAt ?? null;
+  const state = await prisma.mlbSyncState.findUnique({ where: { id: "home-runs" }, select: { lastSyncedAt: true, updatedAt: true } });
+  return state?.lastSyncedAt ?? state?.updatedAt ?? null;
 }
 
 export async function getTransactions() {

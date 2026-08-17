@@ -127,8 +127,10 @@ model MlbBackfill {
 }
 
 model MlbSyncState {
-  id        String   @id
-  updatedAt DateTime @updatedAt
+  id            String   @id
+  lastSyncedAt  DateTime?
+  refreshLockAt DateTime?
+  updatedAt     DateTime @updatedAt
 }
 
 model DailyEmailDelivery {

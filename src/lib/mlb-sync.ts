@@ -12,8 +12,8 @@ const startOfDay = (date: Date) => new Date(`${dateString(date)}T00:00:00.000Z`)
 async function markMlbStatsSynced() {
   await prisma.mlbSyncState.upsert({
     where: { id: "home-runs" },
-    create: { id: "home-runs" },
-    update: { updatedAt: new Date() },
+    create: { id: "home-runs", lastSyncedAt: new Date() },
+    update: { lastSyncedAt: new Date(), refreshLockAt: null },
   });
 }
 
@@ -97,6 +97,55 @@ export async function syncHomeRunsForDates(dates: Date[]) {
 
 export async function syncRecentHomeRuns() {
   return syncHomeRunsForDates([new Date(), new Date(Date.now() - 86_400_000)]);
+}
+
+const PUBLIC_REFRESH_INTERVAL_MS = 15 * 60 * 1_000;
+const PUBLIC_REFRESH_LOCK_MS = 10 * 60 * 1_000;
+
+/**
+ * Refreshes recent results at most once per interval across all public page
+ * requests. The database lock prevents concurrent Vercel instances from
+ * starting duplicate MLB API syncs.
+ */
+export async function syncRecentHomeRunsIfStale() {
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - PUBLIC_REFRESH_INTERVAL_MS);
+  const lockExpiredBefore = new Date(now.getTime() - PUBLIC_REFRESH_LOCK_MS);
+  const state = await prisma.mlbSyncState.findUnique({ where: { id: "home-runs" }, select: { lastSyncedAt: true, updatedAt: true } });
+  const lastSyncedAt = state?.lastSyncedAt ?? state?.updatedAt;
+  if (lastSyncedAt && lastSyncedAt >= staleBefore) return { refreshed: false, statsUpdated: false };
+
+  let acquired = false;
+  if (state) {
+    const lock = await prisma.mlbSyncState.updateMany({
+      where: {
+        id: "home-runs",
+        AND: [
+          { OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: staleBefore } }] },
+          { OR: [{ refreshLockAt: null }, { refreshLockAt: { lt: lockExpiredBefore } }] },
+        ],
+      },
+      data: { refreshLockAt: now },
+    });
+    acquired = lock.count === 1;
+  } else {
+    try {
+      await prisma.mlbSyncState.create({ data: { id: "home-runs", refreshLockAt: now } });
+      acquired = true;
+    } catch {
+      // Another request created the sync state first.
+    }
+  }
+  if (!acquired) return { refreshed: false, statsUpdated: false };
+
+  try {
+    const summary = await syncRecentHomeRuns();
+    return { refreshed: true, statsUpdated: summary.slotsRefreshed > 0 };
+  } catch (error) {
+    await prisma.mlbSyncState.update({ where: { id: "home-runs" }, data: { refreshLockAt: null } });
+    console.error("Public MLB stats refresh failed", error);
+    return { refreshed: false, statsUpdated: false };
+  }
 }
 
 export async function queueMlbBackfill(start: string, end: string) {
