@@ -3,6 +3,7 @@ import { isCountedMlbGame, type ScheduledGame } from "@/lib/mlb-game";
 import { prisma } from "@/lib/prisma";
 import { rebuildSlotTotal } from "@/lib/roster";
 import { saveStandingsSnapshot } from "@/lib/standings";
+import { PUBLIC_STATS_REFRESH_INTERVAL_MS } from "@/lib/stats-refresh";
 
 type HomeRun = { mlbPlayerId: number; fullName: string; gameId: number; gameDate: Date; inning: number; hrNumberInGame: number };
 
@@ -99,7 +100,6 @@ export async function syncRecentHomeRuns() {
   return syncHomeRunsForDates([new Date(), new Date(Date.now() - 86_400_000)]);
 }
 
-const PUBLIC_REFRESH_INTERVAL_MS = 15 * 60 * 1_000;
 const PUBLIC_REFRESH_LOCK_MS = 10 * 60 * 1_000;
 
 /**
@@ -109,7 +109,7 @@ const PUBLIC_REFRESH_LOCK_MS = 10 * 60 * 1_000;
  */
 export async function syncRecentHomeRunsIfStale() {
   const now = new Date();
-  const staleBefore = new Date(now.getTime() - PUBLIC_REFRESH_INTERVAL_MS);
+  const staleBefore = new Date(now.getTime() - PUBLIC_STATS_REFRESH_INTERVAL_MS);
   const lockExpiredBefore = new Date(now.getTime() - PUBLIC_REFRESH_LOCK_MS);
   const state = await prisma.mlbSyncState.findUnique({ where: { id: "home-runs" }, select: { lastSyncedAt: true, updatedAt: true } });
   const lastSyncedAt = state?.lastSyncedAt ?? state?.updatedAt;

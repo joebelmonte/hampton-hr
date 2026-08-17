@@ -38,7 +38,7 @@ In Supabase **Authentication → Providers → Email**, enable email/password si
 
 ## MLB home-run sync and historical backfills
 
-On Vercel, `vercel.json` calls `/api/cron/mlb-sync` daily at 09:00 UTC (5 AM Eastern during daylight time). Each run imports home runs from today and yesterday, then advances one day of the oldest queued historical backfill. Public standings and team-detail page loads also check whether MLB data is over 15 minutes old; the first such request performs a server-side refresh, while concurrent requests do not start duplicates. Call the protected route manually when you want an additional refresh.
+On Vercel, `vercel.json` calls `/api/cron/mlb-sync` daily at 09:00 UTC (5 AM Eastern during daylight time). Each run imports home runs from today and yesterday, then advances one day of the oldest queued historical backfill. Public standings and team-detail pages render immediately, then their browser checks whether MLB data is over 15 minutes old. If so, it starts one background refresh; once that completes, the page updates without a manual reload. Concurrent requests do not start duplicates. Call the protected route manually when you want an additional refresh.
 
 For local development, start the app with `pnpm dev`, export the same `CRON_SECRET` used in `.env`, and call the route yourself:
 

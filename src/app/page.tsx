@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getMlbStatsLastUpdated, getStandings } from "@/lib/standings";
-import { syncRecentHomeRunsIfStale } from "@/lib/mlb-sync";
 import { StandingsTable } from "./standings-table";
+import { StatsRefresh } from "./stats-refresh";
+import { isMlbStatsStale } from "@/lib/stats-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,6 @@ function lastUpdatedLabel(updatedAt: Date) {
 }
 
 export default async function LeaguePage() {
-  const refresh = await syncRecentHomeRunsIfStale();
   const [standings, statsLastUpdated] = await Promise.all([getStandings(), getMlbStatsLastUpdated()]);
 
   return (
@@ -31,7 +31,7 @@ export default async function LeaguePage() {
       </section>
       <section className="card" aria-label="League standings">
         <div className="card-heading"><h2>Standings</h2><Link href="/commissioner">Commissioner admin →</Link></div>
-        {refresh.statsUpdated && <p className="stats-updated" role="status">Stats updated</p>}
+        <StatsRefresh needed={isMlbStatsStale(statsLastUpdated)} />
         <StandingsTable standings={standings} />
         <p className="footnote">Team totals include the twelve highest-scoring slots. The two lowest slots are excluded.</p>
         <p className="footnote">Stats last updated: {statsLastUpdated ? lastUpdatedLabel(statsLastUpdated) : "Not yet synced"}.</p>
