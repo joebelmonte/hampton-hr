@@ -6,10 +6,25 @@ datasource db {
   provider = "postgresql"
 }
 
+model Season {
+  id          String   @id @default(cuid())
+  year        Int      @unique
+  startDate   DateTime @db.Date
+  endDate     DateTime? @db.Date
+  status      String   @default("ACTIVE")
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  teams       Team[]
+
+  @@index([status])
+}
+
 model Team {
   id           String              @id @default(cuid())
-  name         String              @unique
-  slug         String              @unique
+  seasonId     String
+  name         String
+  slug         String
   ownerEmail   String
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
@@ -18,6 +33,11 @@ model Team {
   transactions RosterTransaction[]
   standings    StandingsSnapshot[]
   emailDeliveries DailyEmailDelivery[]
+  season       Season              @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, name])
+  @@unique([seasonId, slug])
+  @@index([seasonId])
 }
 
 model Slot {

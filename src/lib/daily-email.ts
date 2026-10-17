@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getMlbStatsLastUpdated, getStandings, type Standing } from "@/lib/standings";
 import { startOfLeagueDay } from "@/lib/league-date";
 import { captainEmails, isDeliverableCaptainEmail } from "@/lib/captain-emails";
+import { getActiveSeason } from "@/lib/seasons";
 
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]!);
 
@@ -28,7 +29,9 @@ export async function sendDailyStandingsEmails(asOf = new Date()) {
   const from = process.env.EMAIL_FROM;
   if (!apiKey || !from) throw new Error("RESEND_API_KEY and EMAIL_FROM must be configured before sending daily email.");
   const day = startOfLeagueDay(asOf);
-  const [standings, statsLastUpdated, teams] = await Promise.all([getStandings(asOf), getMlbStatsLastUpdated(), prisma.team.findMany({ select: { id: true, name: true, slug: true, ownerEmail: true } })]);
+  const season = await getActiveSeason();
+  if (!season) return { sent: 0, skipped: 0, failures: [] };
+  const [standings, statsLastUpdated, teams] = await Promise.all([getStandings(asOf), getMlbStatsLastUpdated(), prisma.team.findMany({ where: { seasonId: season.id }, select: { id: true, name: true, slug: true, ownerEmail: true } })]);
   const resend = new Resend(apiKey);
   let sent = 0;
   let skipped = 0;
@@ -77,7 +80,7 @@ export async function sendTestStandingsEmail(recipient: string, teamId: string, 
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   if (!apiKey || !from) throw new Error("RESEND_API_KEY and EMAIL_FROM must be configured before sending test email.");
-  const [team, standings, statsLastUpdated] = await Promise.all([prisma.team.findUnique({ where: { id: teamId }, select: { name: true, slug: true } }), getStandings(asOf), getMlbStatsLastUpdated()]);
+  const [team, standings, statsLastUpdated] = await Promise.all([prisma.team.findFirst({ where: { id: teamId, season: { status: "ACTIVE" } }, select: { name: true, slug: true } }), getStandings(asOf), getMlbStatsLastUpdated()]);
   if (!team) throw new Error("Select a team to highlight in the test email.");
   const { error } = await new Resend(apiKey).emails.send({
     from,

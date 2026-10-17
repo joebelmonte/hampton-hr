@@ -135,6 +135,7 @@ if (!connectionString) throw new Error("DATABASE_URL must be set before importin
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
 async function main() {
+  const season = await prisma.season.upsert({ where: { year: 2026 }, create: { year: 2026, startDate: new Date(`${seasonStart}T00:00:00.000Z`) }, update: {} });
   const teamCount = await prisma.team.count();
   if (teamCount && !replaceExisting) throw new Error(`Import stopped: this database already has ${teamCount} team${teamCount === 1 ? "" : "s"}. Import only runs into an empty league. To intentionally replace it, add --replace-existing.`);
   await prisma.$transaction(async (tx) => {
@@ -146,6 +147,7 @@ async function main() {
     const databaseTeams = new Map();
     for (const [name] of teams) {
       const team = await tx.team.create({ data: {
+        seasonId: season.id,
         name,
         slug: slugify(name),
         ownerEmail: `unassigned+${slugify(name)}@example.invalid`,

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { rebuildSlotTotal } from "@/lib/roster";
 import { saveStandingsSnapshot } from "@/lib/standings";
+import { requireActiveSeason } from "@/lib/seasons";
 
 type PlayerData = { mlbPlayerId: number; fullName: string; active: boolean };
 type Bundle = {
@@ -21,10 +22,11 @@ const parseTimestamp = (value: unknown) => {
 };
 
 export async function exportTransactionBundle(): Promise<Bundle> {
+  const season = await requireActiveSeason();
   const [teams, assignments, transactions] = await Promise.all([
-    prisma.team.findMany({ include: { slots: { select: { number: true }, orderBy: { number: "asc" } } }, orderBy: { name: "asc" } }),
-    prisma.playerAssignment.findMany({ include: { player: true, slot: { include: { team: true } } }, orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }] }),
-    prisma.rosterTransaction.findMany({ include: { team: true, slot: true, playerIn: true, playerOut: true }, orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }] }),
+    prisma.team.findMany({ where: { seasonId: season.id }, include: { slots: { select: { number: true }, orderBy: { number: "asc" } } }, orderBy: { name: "asc" } }),
+    prisma.playerAssignment.findMany({ where: { team: { seasonId: season.id } }, include: { player: true, slot: { include: { team: true } } }, orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }] }),
+    prisma.rosterTransaction.findMany({ where: { team: { seasonId: season.id } }, include: { team: true, slot: true, playerIn: true, playerOut: true }, orderBy: [{ effectiveDate: "asc" }, { createdAt: "asc" }] }),
   ]);
   const players = new Map<number, PlayerData>();
   for (const assignment of assignments) players.set(assignment.player.mlbPlayerId, { mlbPlayerId: assignment.player.mlbPlayerId, fullName: assignment.player.fullName, active: assignment.player.active });
@@ -73,6 +75,7 @@ export async function importTransactionBundle(text: string) {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { throw new Error("The import file is not valid JSON."); }
   const bundle = parseBundle(raw);
+  const season = await requireActiveSeason();
   const [existingTeams, existingAssignments, existingTransactions] = await Promise.all([prisma.team.count(), prisma.playerAssignment.count(), prisma.rosterTransaction.count()]);
   if (existingTeams || existingAssignments || existingTransactions) throw new Error("League import only runs against an empty league. Start with a production database that has no teams, assignments, or transactions.");
   const slotKeys = new Set(bundle.teams.flatMap((team) => team.slots.map((slot) => `${team.slug}:${slot}`)));
@@ -80,8 +83,8 @@ export async function importTransactionBundle(text: string) {
   for (const transaction of bundle.transactions) if (!slotKeys.has(`${transaction.teamSlug}:${transaction.slotNumber}`)) throw new Error(`No slot ${transaction.slotNumber} exists for ${transaction.teamSlug} in this export.`);
 
   await prisma.$transaction(async (tx) => {
-    await Promise.all(bundle.teams.map((team) => tx.team.create({ data: { name: team.name, slug: team.slug, ownerEmail: team.ownerEmail, slots: { create: team.slots.map((number) => ({ number })) } } })));
-    const slots = await tx.slot.findMany({ include: { team: true } });
+    await Promise.all(bundle.teams.map((team) => tx.team.create({ data: { seasonId: season.id, name: team.name, slug: team.slug, ownerEmail: team.ownerEmail, slots: { create: team.slots.map((number) => ({ number })) } } })));
+    const slots = await tx.slot.findMany({ where: { team: { seasonId: season.id } }, include: { team: true } });
     const slotByKey = new Map(slots.map((slot) => [`${slot.team.slug}:${slot.number}`, slot]));
     const players = await Promise.all(bundle.players.map((player) => tx.player.upsert({ where: { mlbPlayerId: player.mlbPlayerId }, create: player, update: { fullName: player.fullName, active: player.active } })));
     const playerIdByMlbId = new Map(players.map((player) => [player.mlbPlayerId, player.id]));

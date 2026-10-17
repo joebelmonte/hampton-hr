@@ -2,6 +2,8 @@ import { teamScore } from "@/lib/scoring";
 import { prisma } from "@/lib/prisma";
 import { slotPointTotals } from "@/lib/attribution";
 import { startOfLeagueDay } from "@/lib/league-date";
+import { getActiveSeason } from "@/lib/seasons";
+import type { Season } from "@prisma/client";
 
 export type Standing = {
   id: string;
@@ -28,19 +30,23 @@ function scoreForSlots(slotIds: string[], points: Map<string, number>) {
  * Calculates every displayed value from event history, rather than from a
  * presentation-only snapshot. Snapshot records are used only for rank movement.
  */
-export async function getStandings(asOf = new Date()): Promise<Standing[]> {
-  const day = startOfLeagueDay(asOf);
+function seasonAsOf(season: Season, asOf = new Date()) {
+  return startOfLeagueDay(season.status === "COMPLETED" && season.endDate ? season.endDate : asOf);
+}
+
+export async function getStandingsForSeason(season: Season, asOf = new Date()): Promise<Standing[]> {
+  const day = seasonAsOf(season, asOf);
   const [teams, events, previousSnapshot] = await Promise.all([
-    prisma.team.findMany({ include: { slots: { select: { id: true } } }, orderBy: { name: "asc" } }),
+    prisma.team.findMany({ where: { seasonId: season.id }, include: { slots: { select: { id: true } } }, orderBy: { name: "asc" } }),
     prisma.homeRunEvent.findMany({
-      where: { gameDate: { lte: day } },
+      where: { gameDate: { gte: season.startDate, lte: day } },
       select: {
         gameDate: true,
         player: { select: { assignments: { where: { effectiveDate: { lte: day } }, orderBy: { effectiveDate: "desc" }, select: { effectiveDate: true, slotId: true } } } },
       },
     }),
     prisma.standingsSnapshot.findMany({
-      where: { asOfDate: { lt: day } },
+      where: { asOfDate: { lt: day }, team: { seasonId: season.id } },
       orderBy: { asOfDate: "desc" },
       distinct: ["teamId"],
       select: { teamId: true, rank: true },
@@ -76,6 +82,11 @@ export async function getStandings(asOf = new Date()): Promise<Standing[]> {
     }));
 }
 
+export async function getStandings(asOf = new Date()): Promise<Standing[]> {
+  const season = await getActiveSeason();
+  return season ? getStandingsForSeason(season, asOf) : [];
+}
+
 export async function saveStandingsSnapshot(asOf = new Date()) {
   const day = startOfLeagueDay(asOf);
   const standings = await getStandings(asOf);
@@ -88,7 +99,9 @@ export async function saveStandingsSnapshot(asOf = new Date()) {
 }
 
 export async function getLeagueTeams() {
-  return prisma.team.findMany({ select: { id: true, name: true, slug: true, slots: { select: { id: true, number: true }, orderBy: { number: "asc" } } }, orderBy: { name: "asc" } });
+  const season = await getActiveSeason();
+  if (!season) return [];
+  return prisma.team.findMany({ where: { seasonId: season.id }, select: { id: true, name: true, slug: true, slots: { select: { id: true, number: true }, orderBy: { number: "asc" } } }, orderBy: { name: "asc" } });
 }
 
 export async function getMlbStatsLastUpdated() {
@@ -97,16 +110,19 @@ export async function getMlbStatsLastUpdated() {
 }
 
 export async function getTransactions() {
+  const season = await getActiveSeason();
+  if (!season) return [];
   return prisma.rosterTransaction.findMany({
+    where: { team: { seasonId: season.id } },
     include: { team: true, slot: true, playerIn: true, playerOut: true },
     orderBy: [{ effectiveDate: "desc" }, { createdAt: "desc" }],
   });
 }
 
-export async function getTeamDetail(slug: string, asOf = new Date()) {
-  const day = startOfLeagueDay(asOf);
-  const team = await prisma.team.findUnique({
-    where: { slug },
+export async function getTeamDetailForSeason(season: Season, slug: string, asOf = new Date()) {
+  const day = seasonAsOf(season, asOf);
+  const team = await prisma.team.findFirst({
+    where: { seasonId: season.id, slug },
     include: {
       slots: { include: { cachedTotal: true }, orderBy: { number: "asc" } },
       transactions: { include: { playerIn: true, playerOut: true, slot: true }, orderBy: { effectiveDate: "desc" } },
@@ -116,7 +132,7 @@ export async function getTeamDetail(slug: string, asOf = new Date()) {
 
   const slotIds = team.slots.map((slot) => slot.id);
   const [events, slotAssignments] = await Promise.all([
-    prisma.homeRunEvent.findMany({ where: { gameDate: { lte: day }, player: { assignments: { some: { slotId: { in: slotIds } } } } }, select: { playerId: true, gameDate: true, player: { select: { assignments: { where: { effectiveDate: { lte: day } }, orderBy: { effectiveDate: "desc" }, select: { effectiveDate: true, slotId: true } } } } } }),
+    prisma.homeRunEvent.findMany({ where: { gameDate: { gte: season.startDate, lte: day }, player: { assignments: { some: { slotId: { in: slotIds } } } } }, select: { playerId: true, gameDate: true, player: { select: { assignments: { where: { effectiveDate: { lte: day } }, orderBy: { effectiveDate: "desc" }, select: { effectiveDate: true, slotId: true } } } } } }),
     prisma.playerAssignment.findMany({ where: { slotId: { in: slotIds }, effectiveDate: { lte: day } }, include: { player: true }, orderBy: { effectiveDate: "asc" } }),
   ]);
   const assignments = await prisma.playerAssignment.findMany({
@@ -155,4 +171,9 @@ export async function getTeamDetail(slug: string, asOf = new Date()) {
       }).sort((a, b) => Number(b.current) - Number(a.current) || b.startDate.getTime() - a.startDate.getTime()),
     })).sort((a, b) => b.total - a.total || a.number - b.number),
   };
+}
+
+export async function getTeamDetail(slug: string, asOf = new Date()) {
+  const season = await getActiveSeason();
+  return season ? getTeamDetailForSeason(season, slug, asOf) : null;
 }

@@ -59,7 +59,11 @@ EMAIL_FROM="Hampton HR League <league@your-verified-domain.com>"
 APP_URL="http://localhost:3000"
 ```
 
-`APP_URL` is the public site URL used in the email links. Set it to `https://hampton-hr-prod.vercel.app` in Vercel Production; development can use `http://localhost:3000`. A team’s Captain email(s) field accepts a comma-separated list, and every listed captain receives that team’s summary. Delivery records prevent the same team from receiving more than one scheduled summary for a given day. After pulling these changes, run `pnpm prisma migrate dev` locally (or `pnpm prisma migrate deploy` in production) to create the delivery-record table.
+`APP_URL` is the public site URL used in the email links. Set it to `https://hampton-hr-prod.vercel.app` in Vercel Production; development can use `http://localhost:3000`. A team’s Captain email(s) field accepts a comma-separated list, and every listed captain receives that team’s summary. To explicitly suppress delivery for a captain, use an address ending in `@example.invalid`, such as `unassigned@team.example.invalid`; those placeholder addresses are skipped. Delivery records prevent the same team from receiving more than one scheduled summary for a given day. After pulling these changes, run `pnpm prisma migrate dev` locally (or `pnpm prisma migrate deploy` in production) to create the delivery-record table.
+
+## Completing and archiving a season
+
+In **Commissioner → League setup**, choose the final scoring date and select **Complete season**. This makes the season read-only, removes it from scheduled captain-email delivery, and preserves its final standings and team pages under **Past seasons** on the home page. After completion, start a new season from the same commissioner page, then add that season’s teams and captains. Run the included season migration before deploying this feature: `pnpm prisma migrate dev` locally or `pnpm prisma migrate deploy` against production.
 
 ## Moving a league between environments
 

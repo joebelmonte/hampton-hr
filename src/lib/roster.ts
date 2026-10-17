@@ -54,8 +54,9 @@ export async function replacePlayer(input: {
   if (!Number.isInteger(input.mlbPlayerId) || input.mlbPlayerId <= 0) throw new Error("Enter a valid MLB player ID.");
   if (!fullName) throw new Error("Enter the incoming player's name.");
 
-  const slot = await prisma.slot.findUnique({ include: { team: true }, where: { id: input.slotId } });
+  const slot = await prisma.slot.findUnique({ include: { team: { include: { season: true } } }, where: { id: input.slotId } });
   if (!slot) throw new Error("The selected slot no longer exists.");
+  if (slot.team.season.status !== "ACTIVE") throw new Error("Transactions cannot be added to a completed season.");
 
   const [outgoingAssignment, existingIncoming] = await Promise.all([
     currentPlayerInSlot(slot.id, effectiveDate),
@@ -108,9 +109,10 @@ export async function replacePlayer(input: {
 export async function deleteRosterTransaction(transactionId: string) {
   const transaction = await prisma.rosterTransaction.findUnique({
     where: { id: transactionId },
-    include: { team: true },
+    include: { team: { include: { season: true } } },
   });
   if (!transaction) throw new Error("This transaction no longer exists.");
+  if (transaction.team.season.status !== "ACTIVE") throw new Error("Transactions cannot be deleted from a completed season.");
 
   await prisma.$transaction(async (tx) => {
     await tx.playerAssignment.deleteMany({

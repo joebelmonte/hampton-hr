@@ -8,11 +8,12 @@ const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
 const teams = ["Moonshots", "Bomb Squad", "Yard Goats"];
 
 async function main() {
+  const season = await prisma.season.upsert({ where: { year: 2026 }, create: { year: 2026, startDate: new Date("2026-03-26T00:00:00.000Z") }, update: {} });
   await Promise.all(teams.map(async (name) => {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const team = await prisma.team.upsert({
-      where: { slug },
-      create: { name, slug, ownerEmail: `${slug}@example.com` },
+      where: { seasonId_slug: { seasonId: season.id, slug } },
+      create: { seasonId: season.id, name, slug, ownerEmail: `${slug}@example.com` },
       update: { name },
     });
     await Promise.all(Array.from({ length: 14 }, (_, index) => prisma.slot.upsert({

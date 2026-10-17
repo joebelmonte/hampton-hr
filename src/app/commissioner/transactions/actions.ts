@@ -8,6 +8,7 @@ import { importTransactionBundle } from "@/lib/transaction-transfer";
 import { requireCommissioner } from "@/lib/commissioner-auth";
 import { createLeagueTeam, deleteLeagueTeam, updateLeagueTeam } from "@/lib/league-admin";
 import { sendTestStandingsEmail } from "@/lib/daily-email";
+import { completeActiveSeason, createSeason as createLeagueSeason } from "@/lib/seasons";
 
 export type TransactionFormState = { error?: string; success?: string };
 
@@ -77,12 +78,37 @@ function refreshLeagueSetup() {
   revalidatePath("/commissioner/transactions");
 }
 
+export async function completeSeason(_: TransactionFormState, formData: FormData): Promise<TransactionFormState> {
+  try {
+    await requireCommissioner("/commissioner/league");
+    const season = await completeActiveSeason(String(formData.get("endDate") ?? ""));
+    revalidatePath("/");
+    revalidatePath(`/seasons/${season.year}`);
+    revalidatePath("/commissioner/league");
+    revalidatePath("/commissioner/transactions");
+    return { success: `${season.year} is complete. Captain emails are now disabled for that season.` };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to complete the season." };
+  }
+}
+
+export async function createSeason(_: TransactionFormState, formData: FormData): Promise<TransactionFormState> {
+  try {
+    await requireCommissioner("/commissioner/league");
+    const season = await createLeagueSeason({ year: String(formData.get("year") ?? ""), startDate: String(formData.get("startDate") ?? "") });
+    refreshLeagueSetup();
+    return { success: `${season.year} is now active. Add its teams and captains below.` };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to start the season." };
+  }
+}
+
 export async function createTeam(_: TransactionFormState, formData: FormData): Promise<TransactionFormState> {
   try {
     await requireCommissioner("/commissioner/league");
     const team = await createLeagueTeam({ name: String(formData.get("name") ?? ""), ownerEmail: String(formData.get("ownerEmail") ?? "") });
     refreshLeagueSetup();
-    return { success: `${team.name} created with 12 roster slots.` };
+    return { success: `${team.name} created with 14 roster slots.` };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Unable to create team." };
   }
